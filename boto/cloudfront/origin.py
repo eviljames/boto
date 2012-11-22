@@ -279,7 +279,7 @@ class CFOrigin(object):
         :type origin_protocol_policy: str
         """
         self.domain_name = domain_name
-        if self.origin_id:
+        if origin_id:
             self.origin_id = origin_id
         else:
             self.origin_id = str(uuid.uuid4())
@@ -291,6 +291,8 @@ class CFOrigin(object):
                                                  origin_protocol_policy)
         else:
             self.config = config
+    def __repr__(self):
+        return "<CFOrigin: %s>" % self.domain_name
     def startElement(self, name, attrs, connection):
         if name == 'S3OriginConfig':
             self.config = S3OriginConfig()
