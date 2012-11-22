@@ -1,5 +1,6 @@
 # Copyright (c) 2006-2010 Mitch Garnaat http://garnaat.org/
 # Copyright (c) 2010, Eucalyptus Systems, Inc.
+# Copyright (c) 2012, James Purdy <james@eviljames.ca>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the
@@ -21,7 +22,9 @@
 # IN THE SOFTWARE.
 
 from identity import OriginAccessIdentity
+import uuid
 
+# DEPRECATED
 def get_oai_value(origin_access_identity):
     if isinstance(origin_access_identity, OriginAccessIdentity):
         return origin_access_identity.uri()
@@ -32,7 +35,7 @@ class S3Origin(object):
     """
     Origin information to associate with the distribution.
     If your distribution will use an Amazon S3 origin,
-    then you use the S3Origin element.
+    then you use the S3Origin element.  DEPRECATED
     """
 
     def __init__(self, dns_name=None, origin_access_identity=None):
@@ -78,11 +81,14 @@ class S3Origin(object):
         s += '  </S3Origin>\n'
         return s
     
+    def to_config(self):
+        return CFOrigin(self.dns_name, s3_oai=self.origin_access_identity)
+    
 class CustomOrigin(object):
     """
     Origin information to associate with the distribution.
     If your distribution will use a non-Amazon S3 origin,
-    then you use the CustomOrigin element.
+    then you use the CustomOrigin element.  DEPRECATED
     """
 
     def __init__(self, dns_name=None, http_port=80, https_port=443,
@@ -148,3 +154,161 @@ class CustomOrigin(object):
         s += '  </CustomOrigin>\n'
         return s
     
+    def to_config(self):
+        return CFOrigin(self.dns_name, http_port=self.http_port,
+                        https_port=self.https_port,
+                        origin_protocol_policy=self.origin_protocol_policy)
+
+class S3OriginConfig(object):
+    def __init__(self, origin_access_identity=None):
+        """
+        :param origin_access_identity: The Origin Access Identity for an s3
+                                       Origin.
+        :type origin_access_identity: :class`boto.cloudfront.identity.OriginAccessIdentity
+        """
+        if origin_access_identity:
+            self.origin_access_identity = origin_access_identity
+    
+    def startElement(self, name, attrs, connection):
+        return None
+    
+    def endElement(self, name, value, connection):
+        if name == 'OriginAccessIdentity':
+            self.origin_access_identity = value
+    
+    def to_xml(self):
+        if self.origin_access_identity:
+            s = '  <S3OriginConfig>\n'
+            if isinstance(self.origin_access_identity, OriginAccessIdentity):
+                oai = self.origin_access_identity.uri()
+            else:
+                oai = 'origin-access-identity/cloudfront/%s' % self.origin_access_identity
+            s += '    <OriginAccessIdentity>%s</OriginAccessIdentity>' % oai
+            s += '  </S3OriginConfig>\n'
+        else:
+            s = '  <S3OriginConfig/>\n'
+        return s
+
+class CustomOriginConfig(object):
+    def __init__(self, http_port=None, https_port=None,
+                 origin_protocol_policy='match-viewer')
+        """
+        :param http_port: The HTTP Port to use for a Custom Origin
+        :type http_port: int
+        
+        :param https_port: The HTTPS port to use for a Custom Origin
+        :type https_port: int
+        
+        :param origin_protocol_policy: The protocol you want CloudFront to use
+                                       when accessing your CustomOrigin server.
+                                       Values: 'http-only'|'match-viewer'
+        :type origin_protocol_policy: str
+
+        """
+        if http_port:
+            self.http_port = http_port
+        if https_port:
+            self.https_port = https_port
+        self.origin_protocol_policy = origin_protocol_policy
+    
+    def startElement(self, name, attrs, connection):
+        return None
+    
+    def endElement(self, name, value, connection):
+        if name == 'HTTPPort':
+            try:
+                self.http_port = int(value)
+            except ValueError:
+                self.http_port = value
+        elif name == 'HTTPSPort':
+            try:
+                self.https_port = int(value)
+            except ValueError:
+                self.https_port = value
+        elif name == 'OriginProtocolPolicy':
+            self.origin_protocol_policy = value
+    
+    def to_xml(self):
+        s = '<CustomOriginConfig>\n'
+        if self.http_port:
+            s += '  <HTTPPort>%d</HTTPPort>' % self.http_port
+        if self.https_port:
+            s += '  <HTTPSPort>%d</HTTPSPort>' % self.https_port
+        opp = self.origin_protocol_policy
+        s += '  <OriginProtocolPolicy>%s</OriginProtocolPolicy>\n' % opp
+        s += '</CustomOriginConfig>\n'
+        return s
+
+class CFOrigin(object):
+    """
+    With CloudFront moving to multiple origins, a generic Origin descriptor is
+    required.
+    """
+    def __init__(self, domain_name=None, origin_id=None, config=None,
+                 s3_oai=None, http_port=None, https_port=None,
+                 origin_protocol_policy='match-viewer'):
+        """
+        :param domain_name: The domain name of the origin server.  For S3
+                            Origins, this should be in the format:
+                            bucket.s3.amazonaws.com
+        :type domain_name: str
+        
+        :param origin_id: A unique identifier used to reference this Origin by
+                          CacheBehavior objects.
+        :type origin_id: str
+        
+        :param config: A S3OriginConfig or CustomOriginConfig object
+                       representing this Origin's configuration.  Named
+                       parameters can be used to construct an Origin Config in
+                       lieu of this object.
+        :type config: :class`boto.cloudfront.origin.S3OriginConfig` or
+                      :class`boto.cloudfront.origin.CustomOriginConfig`
+        
+        :param s3_oai: The Origin Access Identity for an s3 Origin.
+        :type s3_oai: :class`boto.cloudfront.identity.OriginAccessIdentity
+        
+        :param http_port: The HTTP Port to use for a Custom Origin
+        :type http_port: int
+        
+        :param https_port: The HTTPS port to use for a Custom Origin
+        :type https_port: int
+        
+        :param origin_protocol_policy: The protocol you want CloudFront to use
+                                       when accessing your CustomOrigin server.
+                                       Values: 'http-only'|'match-viewer'
+        :type origin_protocol_policy: str
+        """
+        self.domain_name = domain_name
+        if self.origin_id:
+            self.origin_id = origin_id
+        else:
+            self.origin_id = str(uuid.uuid4())
+        if not config:
+            if 's3.amazonaws.com' in self.domain_name:
+                self.config = S3OriginConfig(s3_oai)
+            else:
+                self.config = CustomOriginConfig(http_port, https_port,
+                                                 origin_protocol_policy)
+        else:
+            self.config = config
+    def startElement(self, name, attrs, connection):
+        if name == 'S3OriginConfig':
+            self.config = S3OriginConfig()
+            return self.config
+        elif name == 'CustomOriginConfig':
+            self.config = CustomOriginConfig()
+            return self.config
+
+    def endElement(self, name, value, connection):
+        if name == 'Id':
+            self.origin_id = value
+        elif name == 'DomainName':
+            self.domain_name = value
+    
+    def to_xml(self):
+        s = '<Origin>\n'
+        s += '  <Id>%s</Id>\n' % self.origin_id
+        s += '  <DomainName>%s</DomainName>\n' % self.domain_name
+        s += self.config.to_xml()
+        s += '</Origin>\n'
+        return s
