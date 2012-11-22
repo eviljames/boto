@@ -21,9 +21,10 @@
 
 class LoggingInfo(object):
 
-    def __init__(self, bucket='', prefix=''):
+    def __init__(self, bucket='', prefix='', include_cookies=False):
         self.bucket = bucket
         self.prefix = prefix
+        self.include_cookies = include_cookies
     
     def startElement(self, name, attrs, connection):
         return None
@@ -33,6 +34,11 @@ class LoggingInfo(object):
             self.bucket = value
         elif name == 'Prefix':
             self.prefix = value
+        elif name == 'IncludeCookies':
+            if value.lower() == 'true':
+                self.include_cookies = True
+            else:
+                self.include_cookies = False
         else:
             setattr(self, name, value)
             
