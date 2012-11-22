@@ -191,7 +191,7 @@ class S3OriginConfig(object):
 
 class CustomOriginConfig(object):
     def __init__(self, http_port=None, https_port=None,
-                 origin_protocol_policy='match-viewer')
+                 origin_protocol_policy='match-viewer'):
         """
         :param http_port: The HTTP Port to use for a Custom Origin
         :type http_port: int
