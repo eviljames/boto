@@ -26,17 +26,17 @@ class CacheBehavior(object):
     An object to lay out cache behaviors.
     """
     
-    def __init__(self, pattern, target_origin_id, forwarded_values=None,
-                 trusted_signers=None, viewer_protocol_policy=None,
-                 min_ttl=None):
+    def __init__(self, pattern=None, target_origin_id=None,
+                 forwarded_values=None, trusted_signers=None,
+                 viewer_protocol_policy=None, min_ttl=None):
         """
         :param pattern: The pattern that specifies which requests you want this
                         cache behavior to apply to.  When CloudFront receives an
                         end-user request, the requested path is compared with
                         path patterns in the order in which cache behaviors are
-                        listed in the distribution.  To specify the default
-                        cache behavior, use the string 'Default', otherwise
-                        specify a pattern, ie: '/images/*.jpg'
+                        listed in the distribution.  Leave blank to specify the default
+                        cache behavior, otherwise specify a pattern
+                        ie: '/images/*.jpg'
         :type pattern: str
         
         :param target_origin_id: Which origin of the distribution's defined
@@ -93,7 +93,7 @@ class CacheBehavior(object):
             self.min_ttl = value
     
     def to_xml(self):
-        if self.pattern == 'Default':
+        if not self.pattern:
             s = '  <DefaultCacheBehavior>'
         else:
             s = '  <CacheBehavior>\n'
