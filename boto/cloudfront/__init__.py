@@ -163,11 +163,19 @@ class CloudFrontConnection(AWSAuthConnection):
         return self._set_config(distribution_id, etag, config)
 
     def create_distribution(self, origin, enabled, caller_reference='',
-                            cnames=None, comment='', trusted_signers=None):
+                            cnames=None, comment='', trusted_signers=None,
+                            default_root_object='', logging=None,
+                            origins=None, default_cache_behavior=None,
+                            cache_behaviors=None, price_class='PriceClass_All'):
         config = DistributionConfig(origin=origin, enabled=enabled,
                                     caller_reference=caller_reference,
                                     cnames=cnames, comment=comment,
-                                    trusted_signers=trusted_signers)
+                                    trusted_signers=trusted_signers,
+                                    default_root_object=default_root_object,
+                                    logging=logging, origins=origins,
+                                    default_cache_behavior=default_cache_behavior,
+                                    cache_behaviors=cache_behaviors,
+                                    price_class=price_class)
         return self._create_object(config, 'distribution', Distribution)
 
     def delete_distribution(self, distribution_id, etag):
