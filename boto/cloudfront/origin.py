@@ -319,18 +319,67 @@ class CFOrigin(object):
 class CFOrigins(list):
     """
     A list object to manage many origins, the append_origin method accepts many
-    ways to build an Origin.
+    ways to build an Origin.  The origin parameter may be any of: str, S3Origin,
+    CustomOrigin, CFOrigin or CFOrigins and may be a list thereof. If the origin
+    parameter is None, and domain_name is specified, all the other parameters
+    are passed forward into the CFOrigin object.
     """
-    def append_origin(self, origin=None, domain_name=None, origin_id=None,
+    def append_origin(self, origin=None, domain_name='', origin_id=None,
                       config=None, s3_oai=None, http_port=80, https_port=443,
                       origin_protocol_policy='match-viewer'):
-        if type(origin) is S3Origin or type(origin) is CustomOrigin:
+        """
+        :param origin: The origin parameter may be any of: str, S3Origin,
+                       CustomOrigin, CFOrigin or CFOrigins and may be a list
+                       thereof. If the origin parameter is None, and domain_name
+                       is specified, all the other parameters are passed forward
+                       into the CFOrigin object.
+        :type origin: :class`boto.cloudfront.origin.CFOrigins` or
+                      :class`boto.cloudfront.origin.CFOrigin` or
+                      :class`boto.cloudfront.origin.CustomOrigin` or
+                      :class`boto.cloudfront.origin.S3Origin` or
+                      str or
+                      list of any combination of the above.
+        
+        :param domain_name: The domain name of the origin server.  For S3
+                            Origins, this should be in the format:
+                            bucket.s3.amazonaws.com
+        :type domain_name: str
+        
+        :param origin_id: A unique identifier used to reference this Origin by
+                          CacheBehavior objects.
+        :type origin_id: str
+        
+        :param config: A S3OriginConfig or CustomOriginConfig object
+                       representing this Origin's configuration.  Named
+                       parameters can be used to construct an Origin Config in
+                       lieu of this object.
+        :type config: :class`boto.cloudfront.origin.S3OriginConfig` or
+                      :class`boto.cloudfront.origin.CustomOriginConfig`
+        
+        :param s3_oai: The Origin Access Identity for an s3 Origin.
+        :type s3_oai: :class`boto.cloudfront.identity.OriginAccessIdentity
+        
+        :param http_port: The HTTP Port to use for a Custom Origin
+        :type http_port: int
+        
+        :param https_port: The HTTPS port to use for a Custom Origin
+        :type https_port: int
+        
+        :param origin_protocol_policy: The protocol you want CloudFront to use
+                                       when accessing your CustomOrigin server.
+                                       Values: 'http-only'|'match-viewer'
+        :type origin_protocol_policy: str
+        """
+        if isinstance(origin, (S3Origin, CustomOrigin)):
             self.append(origin.to_config())
-        if type(origin) is CFOrigin:
+        elif isinstance(origin, (CFOrigins, list)):
+            for o in origin:
+                self.append_origin(o)
+        elif isinstance(origin, CFOrigin):
             self.append(origin)
-        if type(origin) is str:
+        elif isinstance(origin, str):
             self.append(CFOrigin(origin))
-        else:
+        elif domain_name:
             self.append(CFOrigin(domain_name=domain_name, origin_id=origin_id,
                                  config=config, s3_oai=s3_oai,
                                  http_port=http_port, https_port=https_port,
