@@ -166,8 +166,7 @@ class S3OriginConfig(object):
                                        Origin.
         :type origin_access_identity: :class`boto.cloudfront.identity.OriginAccessIdentity
         """
-        if origin_access_identity:
-            self.origin_access_identity = origin_access_identity
+        self.origin_access_identity = origin_access_identity
     
     def startElement(self, name, attrs, connection):
         return None
@@ -186,11 +185,13 @@ class S3OriginConfig(object):
             s += '    <OriginAccessIdentity>%s</OriginAccessIdentity>' % oai
             s += '  </S3OriginConfig>\n'
         else:
-            s = '  <S3OriginConfig/>\n'
+            s = '  <S3OriginConfig>\n'
+            s += '    <OriginAccessIdentity></OriginAccessIdentity>\n'
+            s += '  </S3OriginConfig>\n'
         return s
 
 class CustomOriginConfig(object):
-    def __init__(self, http_port=None, https_port=None,
+    def __init__(self, http_port=80, https_port=443,
                  origin_protocol_policy='match-viewer'):
         """
         :param http_port: The HTTP Port to use for a Custom Origin
@@ -205,10 +206,8 @@ class CustomOriginConfig(object):
         :type origin_protocol_policy: str
 
         """
-        if http_port:
-            self.http_port = http_port
-        if https_port:
-            self.https_port = https_port
+        self.http_port = http_port
+        self.https_port = https_port
         self.origin_protocol_policy = origin_protocol_policy
     
     def startElement(self, name, attrs, connection):
@@ -244,8 +243,8 @@ class CFOrigin(object):
     With CloudFront moving to multiple origins, a generic Origin descriptor is
     required.
     """
-    def __init__(self, domain_name=None, origin_id=None, config=None,
-                 s3_oai=None, http_port=None, https_port=None,
+    def __init__(self, domain_name='', origin_id=None, config=None,
+                 s3_oai=None, http_port=80, https_port=443,
                  origin_protocol_policy='match-viewer'):
         """
         :param domain_name: The domain name of the origin server.  For S3
@@ -291,8 +290,10 @@ class CFOrigin(object):
                                                  origin_protocol_policy)
         else:
             self.config = config
+    
     def __repr__(self):
         return "<CFOrigin: %s>" % self.domain_name
+    
     def startElement(self, name, attrs, connection):
         if name == 'S3OriginConfig':
             self.config = S3OriginConfig()
@@ -300,7 +301,7 @@ class CFOrigin(object):
         elif name == 'CustomOriginConfig':
             self.config = CustomOriginConfig()
             return self.config
-
+    
     def endElement(self, name, value, connection):
         if name == 'Id':
             self.origin_id = value
@@ -314,3 +315,40 @@ class CFOrigin(object):
         s += self.config.to_xml()
         s += '</Origin>\n'
         return s
+
+class CFOrigins(list):
+    """
+    A list object to manage many origins, the append_origin method accepts many
+    ways to build an Origin.
+    """
+    def append_origin(self, origin=None, domain_name=None, origin_id=None,
+                      config=None, s3_oai=None, http_port=80, https_port=443,
+                      origin_protocol_policy='match-viewer'):
+        if type(origin) is S3Origin or type(origin) is CustomOrigin:
+            self.append(origin.to_config())
+        if type(origin) is CFOrigin:
+            self.append(origin)
+        if type(origin) is str:
+            self.append(CFOrigin(origin))
+        else:
+            self.append(CFOrigin(domain_name=domain_name, origin_id=origin_id,
+                                 config=config, s3_oai=s3_oai,
+                                 http_port=http_port, https_port=https_port,
+                                 origin_protocol_policy=origin_protocol_policy))
+    def to_xml(self):
+        s = '<Origins>\n'
+        s += '  <Quantity>%d</Quantity>' % len(self)
+        s += '  <Items>\n'
+        for o in self:
+            s += o.to_xml()
+        s += '  </Items>\n'
+        s += '</Origins>\n'
+        return s
+    def startElement(self, name, attrs, connection):
+        if name == 'Origin':
+            o = CFOrigin()
+            self.append(o)
+            return o
+    def endElement(self, name, value, connection):
+        pass
+    
