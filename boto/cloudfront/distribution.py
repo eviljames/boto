@@ -284,14 +284,16 @@ class StreamingDistributionConfig(DistributionConfig):
 class DistributionSummary:
 
     def __init__(self, connection=None, domain_name='', id='',
-                 last_modified_time=None, status='', origin=None,
-                 cname='', comment='', enabled=False):
+                 last_modified_time=None, status='', origins=None,
+                 cname='', comment='', enabled=False,
+                 default_cache_behavior=None,
+                 cache_behaviors=None, price_class=''):
         self.connection = connection
         self.domain_name = domain_name
         self.id = id
         self.last_modified_time = last_modified_time
         self.status = status
-        self.origin = origin
+        self.origins = origins
         self.enabled = enabled
         self.cnames = []
         if cname:
@@ -300,6 +302,11 @@ class DistributionSummary:
         self.trusted_signers = None
         self.etag = None
         self.streaming = False
+        self.price_class = price_class
+        self.default_cache_behavior = default_cache_behavior
+        self.cache_behaviors = []
+        if cache_behaviors:
+            self.cache_behaviors = cache_behaviors
 
     def startElement(self, name, attrs, connection):
         if name == 'TrustedSigners':
@@ -311,6 +318,16 @@ class DistributionSummary:
         elif name == 'CustomOrigin':
             self.origin = CustomOrigin()
             return self.origin
+        elif name == 'Origins':
+            self.origins = CFOrigins()
+            return self.origins
+        elif name == 'DefaultCacheBehavior':
+            self.default_cache_behavior = CacheBehavior()
+            return self.default_cache_behavior
+        elif name == 'CacheBehavior':
+            cb = CacheBehavior()
+            self.cache_behaviors.append(cb)
+            return cb
         return None
 
     def endElement(self, name, value, connection):
@@ -335,6 +352,8 @@ class DistributionSummary:
                 self.enabled = False
         elif name == 'StreamingDistributionSummary':
             self.streaming = True
+        elif name == 'PriceClass':
+            self.price_class = value
         else:
             setattr(self, name, value)
 
