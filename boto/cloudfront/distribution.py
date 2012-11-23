@@ -37,7 +37,7 @@ class DistributionConfig:
     def __init__(self, connection=None, origin=None, enabled=False,
                  caller_reference='', cnames=None, comment='',
                  trusted_signers=None, default_root_object='',
-                 logging=None, default_cache_behavior=None,
+                 logging=None, default_cache_behavior=None, origins=None,
                  cache_behaviors=None, price_class='PriceClass_All'):
         """
         :param origin: Origin information to associate with the
@@ -97,6 +97,9 @@ class DistributionConfig:
                                        the distribution.
         :type default_cache_behavior: :class`boto.cloudfront.cache.CacheBehavior`
         
+        :param origins: A CFOrigins object or a list of origin definitions.
+        :type origins: :class`boto.cldoufront.origin.CFOrigins
+        
         :param cache_behaviors: Defines cache behaviors of individual Origins.
         :type cache_behaviors: array of :class`boto.cloudfront.cache.CacheBehavior`
         
@@ -108,10 +111,14 @@ class DistributionConfig:
         :type price_class: str
         """
         self.connection = connection
-        self.origins = CFOrigins()
+        if isinstance(origins, CFOrigins):
+            self.origins = origins
+        else:
+            self.origins = CFOrigins()
+            self.origins.append_origin(origins)
         
         if origin:
-            self.origins.append_origin(origin=origin)
+            self.origins.append_origin(origin)
         
         self.enabled = enabled
         if caller_reference:
@@ -229,7 +236,10 @@ class DistributionConfig:
             setattr(self, name, value)
 
 class StreamingDistributionConfig(DistributionConfig):
-
+    """
+    A special class of distribution that provides RTMP streaming from a
+    single S3 Origin.
+    """
     def __init__(self, connection=None, origin='', enabled=False,
                  caller_reference='', cnames=None, comment='',
                  trusted_signers=None, logging=None):
@@ -402,11 +412,18 @@ class Distribution:
         :param comment: The comment associated with the Distribution.
 
         """
-        new_config = DistributionConfig(self.connection, self.config.origin,
-                                        self.config.enabled, self.config.caller_reference,
-                                        self.config.cnames, self.config.comment,
-                                        self.config.trusted_signers,
-                                        self.config.default_root_object)
+        new_config = DistributionConfig(self.connection,
+                                        origins=self.config.origins,
+                                        enabled=self.config.enabled,
+                                        caller_reference=self.config.caller_reference,
+                                        cnames=self.config.cnames,
+                                        comment=self.config.comment,
+                                        trusted_signers=self.config.trusted_signers,
+                                        default_root_object=self.config.default_root_object,
+                                        default_cache_behavior=self.config.default_cache_behavior,
+                                        logging=self.config.logging,
+                                        cache_behaviors=self.config.cache_behaviors,
+                                        price_class=self.config.price_class)
         if enabled != None:
             new_config.enabled = enabled
         if cnames != None:
@@ -440,6 +457,9 @@ class Distribution:
         self.connection.delete_distribution(self.id, self.etag)
 
     def _get_bucket(self):
+        """
+        DEPRECATED - multiple origins may exist, move to Origin code.
+        """
         if isinstance(self.config.origin, S3Origin):
             if not self._bucket:
                 bucket_dns_name = self.config.origin.dns_name
@@ -460,6 +480,7 @@ class Distribution:
     
     def get_objects(self):
         """
+        DEPRECATED - move to origin code.
         Return a list of all content objects in this distribution.
         
         :rtype: list of :class:`boto.cloudfront.object.Object`
@@ -473,6 +494,7 @@ class Distribution:
 
     def set_permissions(self, object, replace=False):
         """
+        DEPRECATED - move to Origin code
         Sets the S3 ACL grants for the given object to the appropriate
         value based on the type of Distribution.  If the Distribution
         is serving private content the ACL will be set to include the
@@ -505,6 +527,7 @@ class Distribution:
 
     def set_permissions_all(self, replace=False):
         """
+        DEPRECATED - move to origin code
         Sets the S3 ACL grants for all objects in the Distribution
         to the appropriate value based on the type of Distribution.
 
@@ -522,6 +545,7 @@ class Distribution:
 
     def add_object(self, name, content, headers=None, replace=True):
         """
+        DEPRECATED - move to origin code
         Adds a new content object to the Distribution.  The content
         for the object will be copied to a new Key in the S3 Bucket
         and the permissions will be set appropriately for the type
