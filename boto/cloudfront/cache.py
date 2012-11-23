@@ -28,7 +28,7 @@ class CacheBehavior(object):
     
     def __init__(self, pattern=None, target_origin_id=None,
                  forwarded_values=None, trusted_signers=None,
-                 viewer_protocol_policy=None, min_ttl=None):
+                 viewer_protocol_policy='allow-all', min_ttl=3600):
         """
         :param pattern: The pattern that specifies which requests you want this
                         cache behavior to apply to.  When CloudFront receives an
@@ -69,10 +69,8 @@ class CacheBehavior(object):
             self.trusted_signers = trusted_signers
         else:
             self.trusted_signers = TrustedSigners()
-        if viewer_protocol_policy:
-            self.viewer_protocol_policy = viewer_protocol_policy
-        if min_ttl:
-            self.min_ttl = min_ttl
+        self.viewer_protocol_policy = viewer_protocol_policy
+        self.min_ttl = min_ttl
     
     def startElement(self, name, attrs, connection):
         if name == 'TrustedSigners':
@@ -114,11 +112,9 @@ class CacheBehavior(object):
             s += '      <Enabled>false</Enabled>\n'
             s+=  '      <Quantity>0</Quantity>\n'
         s += '    </TrustedSigners>\n'
-        if self.viewer_protocol_policy:
-            s += '<ViewerProtocolPolicy>%s</ViewerProtocolPolicy>\n' % self.viewer_protocol_policy
-        if self.min_ttl:
-            s += '<MinTTL>%d</MinTTL>\n' % self.min_ttl
-        if self.pattern is 'Default':
+        s += '<ViewerProtocolPolicy>%s</ViewerProtocolPolicy>\n' % self.viewer_protocol_policy
+        s += '<MinTTL>%d</MinTTL>\n' % self.min_ttl
+        if not self.pattern:
             s += '  </DefaultCacheBehavior>\n'
         else:
             s += '</CacheBehavior>\n'
@@ -168,7 +164,12 @@ class ForwardedValues(object):
     
     def to_xml(self):
         s = '  <ForwardedValues>\n'
-        s += '    <QueryString>%s</QueryString>\n' % self.query_string
+        s += '    <QueryString>'
+        if self.query_string:
+            s += 'true'
+        else:
+            s += 'false'
+        s += '</QueryString>\n'
         s += '    <Cookies>\n'
         s += '      <Forward>%s</Forward>\n' % self.cookies
         if self.cookies is 'whitelist':
