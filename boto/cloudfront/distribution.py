@@ -37,7 +37,7 @@ class DistributionConfig:
     def __init__(self, connection=None, origin=None, enabled=False,
                  caller_reference='', cnames=None, comment='',
                  trusted_signers=None, default_root_object='',
-                 logging=None, default_cache_behavior=None, origins=None,
+                 logging=None, origins=None, default_cache_behavior=None,
                  cache_behaviors=None, price_class='PriceClass_All'):
         """
         :param origin: Origin information to associate with the
@@ -310,13 +310,13 @@ class DistributionSummary:
 
     def startElement(self, name, attrs, connection):
         if name == 'TrustedSigners':
-            self.trusted_signers = TrustedSigners()
+            self.trusted_signers = TrustedSigners() # DEPRECATED
             return self.trusted_signers
         elif name == 'S3Origin':
-            self.origin = S3Origin()
+            self.origin = S3Origin() # DEPRECATED
             return self.origin
-        elif name == 'CustomOrigin':
-            self.origin = CustomOrigin()
+        elif name == 'CustomOrigin': 
+            self.origin = CustomOrigin() # DEPRECATED
             return self.origin
         elif name == 'Origins':
             self.origins = CFOrigins()
