@@ -1,4 +1,5 @@
 # Copyright (c) 2006-2009 Mitch Garnaat http://garnaat.org/
+# Some parts Copyright (c) 2012 James Purdy <james@eviljames.ca>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the
@@ -27,24 +28,29 @@ from boto.cloudfront.identity import OriginAccessIdentity
 from boto.cloudfront.object import Object, StreamingObject
 from boto.cloudfront.signers import ActiveTrustedSigners, TrustedSigners
 from boto.cloudfront.logging import LoggingInfo
-from boto.cloudfront.origin import S3Origin, CustomOrigin
+from boto.cloudfront.origin import S3Origin, CustomOrigin, CFOrigin, CFOrigins
+from boto.cloudfront.cache import CacheBehavior
 from boto.s3.acl import ACL
 
 class DistributionConfig:
 
     def __init__(self, connection=None, origin=None, enabled=False,
                  caller_reference='', cnames=None, comment='',
-                 trusted_signers=None, default_root_object=None,
-                 logging=None):
+                 trusted_signers=None, default_root_object='',
+                 logging=None, default_cache_behavior=None,
+                 cache_behaviors=None, price_class='PriceClass_All'):
         """
         :param origin: Origin information to associate with the
                        distribution.  If your distribution will use
                        an Amazon S3 origin, then this should be an
                        S3Origin object. If your distribution will use
                        a custom origin (non Amazon S3), then this
-                       should be a CustomOrigin object.
-        :type origin: :class:`boto.cloudfront.origin.S3Origin` or
-                      :class:`boto.cloudfront.origin.CustomOrigin`
+                       should be a CustomOrigin object.  Legacy classes
+                       boto.cloudfront.origin.S3Origin and
+                       boto.cloudfront.origin.CustomOrigin will retain some
+                       support, but the new CFOrigin should be used.
+        :type origin: list of
+                      :class:`boto.cloudfront.origin.CFOrigin`
 
         :param enabled: Whether the distribution is enabled to accept
                         end user requests for content.
@@ -60,7 +66,7 @@ class DistributionConfig:
         :param cnames: A CNAME alias you want to associate with this
                        distribution. You can have up to 10 CNAME aliases
                        per distribution.
-        :type enabled: array of str
+        :type enabled: list of str
         
         :param comment: Any comments you want to include about the
                         distribution.
@@ -87,9 +93,26 @@ class DistributionConfig:
                         it should contain None.
         :type logging: :class`boto.cloudfront.logging.LoggingInfo`
         
+        :param default_cache_behavior: Defines the default caching behavior for
+                                       the distribution.
+        :type default_cache_behavior: :class`boto.cloudfront.cache.CacheBehavior`
+        
+        :param cache_behaviors: Defines cache behaviors of individual Origins.
+        :type cache_behaviors: array of :class`boto.cloudfront.cache.CacheBehavior`
+        
+        :param price_class: Determines which edge locations to use to balance
+                            price vs. required performance.  Valid values are:
+                            'PriceClass_100' - US & EU
+                            'PriceClass_200' - US, EU, .jp, Hong Kong & Singapore
+                            'PriceClass_All' - All edge locations (highest price)
+        :type price_class: str
         """
         self.connection = connection
-        self.origin = origin
+        self.origins = CFOrigins()
+        
+        if origin:
+            self.origins.append_origin(origin=origin)
+        
         self.enabled = enabled
         if caller_reference:
             self.caller_reference = caller_reference
@@ -102,55 +125,87 @@ class DistributionConfig:
         self.trusted_signers = trusted_signers
         self.logging = None
         self.default_root_object = default_root_object
+        if default_cache_behavior:
+            self.default_cache_behavior = default_cache_behavior
+        else:
+            if len(self.origins) > 0:
+                self.default_cache_behavior = CacheBehavior(
+                        target_origin_id=self.origins[0].origin_id,
+                        trusted_signers=trusted_signers)
+            else:
+                self.default_cache_behavior = None
+        self.cache_behaviors = []
+        if cache_behaviors:
+            self.cache_behaviors = cache_behaviors
+        self.price_class = price_class
 
     def to_xml(self):
         s = '<?xml version="1.0" encoding="UTF-8"?>\n'
-        s += '<DistributionConfig xmlns="http://cloudfront.amazonaws.com/doc/2010-07-15/">\n'
-        if self.origin:
-            s += self.origin.to_xml()
+        s += '<DistributionConfig xmlns="http://cloudfront.amazonaws.com/doc/2012-07-01/">\n'
         s += '  <CallerReference>%s</CallerReference>\n' % self.caller_reference
-        for cname in self.cnames:
-            s += '  <CNAME>%s</CNAME>\n' % cname
+        s += '  <Aliases>\n'
+        if self.cnames:
+            s += '    <Quantity>%d</Quantity>\n' % len(self.cnames)
+            s += '    <Items>\n'
+            for cname in self.cnames:
+                s += '      <CNAME>%s</CNAME>\n' % cname
+            s += '    </Items>\n'
+        else:
+            s += '    <Quantity>0</Quantity>\n'
+        s += '  </Aliases>\n'
+        if self.origins:
+            s += self.origins.to_xml()
+        if self.default_cache_behavior:
+            s += self.default_cache_behavior.to_xml()
+        if self.cache_behaviors:
+            s += '  <CacheBehaviors>\n'
+            s += '    <Quantity>%d</Quantity>\n' % len(self.cache_behaviors)
+            for behavior in self.cache_behaviors:
+                s += behavior.to_xml()
+            s += '  </CacheBehaviors>\n'
+        else:
+            s += '  <CacheBehaviors>\n'
+            s += '    <Quantity>0</Quantity>\n'
+            s += '  </CacheBehaviors>\n'
         if self.comment:
             s += '  <Comment>%s</Comment>\n' % self.comment
+        else:
+            s += '  <Comment/>\n'
         s += '  <Enabled>'
         if self.enabled:
             s += 'true'
         else:
             s += 'false'
         s += '</Enabled>\n'
-        if self.trusted_signers:
-            s += '<TrustedSigners>\n'
-            for signer in self.trusted_signers:
-                if signer == 'Self':
-                    s += '  <Self></Self>\n'
-                else:
-                    s += '  <AwsAccountNumber>%s</AwsAccountNumber>\n' % signer
-            s += '</TrustedSigners>\n'
+        s += '<Logging>\n'
         if self.logging:
-            s += '<Logging>\n'
+            s += '  <Enabled>true</Enabled>\n'
+            s += '  <IncludeCookies>%s</IncludeCookies>\n' % self.logging.include_cookies
             s += '  <Bucket>%s</Bucket>\n' % self.logging.bucket
             s += '  <Prefix>%s</Prefix>\n' % self.logging.prefix
-            s += '</Logging>\n'
-        if self.default_root_object:
-            dro = self.default_root_object
-            s += '<DefaultRootObject>%s</DefaultRootObject>\n' % dro
+        else:
+            s += '  <Enabled>false</Enabled>\n'
+            s += '  <IncludeCookies>false</IncludeCookies>\n'
+            s += '  <Bucket/><Prefix/>\n'
+        s += '</Logging>\n'
+        s += '<DefaultRootObject>%s</DefaultRootObject>\n' % self.default_root_object
+        s += '<PriceClass>%s</PriceClass>' % self.price_class
         s += '</DistributionConfig>\n'
         return s
 
     def startElement(self, name, attrs, connection):
-        if name == 'TrustedSigners':
-            self.trusted_signers = TrustedSigners()
-            return self.trusted_signers
-        elif name == 'Logging':
+        if name == 'Logging':
             self.logging = LoggingInfo()
             return self.logging
-        elif name == 'S3Origin':
-            self.origin = S3Origin()
-            return self.origin
-        elif name == 'CustomOrigin':
-            self.origin = CustomOrigin()
-            return self.origin
+        elif name == 'Origins':
+            self.origins = CFOrigins()
+            return self.origins
+        elif name == 'DefaultCacheBehavior':
+            self.default_cache_behavior = CacheBehavior()
+        elif name == 'CacheBehavior':
+            cb = CacheBehavior()
+            self.cache_behaviors.append(cb)
+            return cb
         else:
             return None
 
@@ -168,6 +223,8 @@ class DistributionConfig:
             self.caller_reference = value
         elif name == 'DefaultRootObject':
             self.default_root_object = value
+        elif name == 'PriceClass':
+            self.price_class = value
         else:
             setattr(self, name, value)
 
