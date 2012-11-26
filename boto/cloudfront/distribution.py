@@ -61,12 +61,12 @@ class DistributionConfig:
                                  caller_reference is provided, boto
                                  will generate a type 4 UUID for use
                                  as the caller reference.
-        :type enabled: str
+        :type caller_reference: str
         
         :param cnames: A CNAME alias you want to associate with this
                        distribution. You can have up to 10 CNAME aliases
                        per distribution.
-        :type enabled: list of str
+        :type cnames: list of str
         
         :param comment: Any comments you want to include about the
                         distribution.
@@ -85,7 +85,7 @@ class DistributionConfig:
                                     Only include a DefaultRootObject value
                                     if you are going to assign a default
                                     root object for the distribution.
-        :type comment: str
+        :type default_root_object: str
 
         :param logging: Controls whether access logs are written for the
                         distribution. If you want to turn on access logs,
@@ -130,7 +130,7 @@ class DistributionConfig:
             self.cnames = cnames
         self.comment = comment
         self.trusted_signers = trusted_signers
-        self.logging = None
+        self.logging = logging
         self.default_root_object = default_root_object
         if default_cache_behavior:
             self.default_cache_behavior = default_cache_behavior
@@ -235,49 +235,140 @@ class DistributionConfig:
         else:
             setattr(self, name, value)
 
-class StreamingDistributionConfig(DistributionConfig):
+class StreamingDistributionConfig(object):
     """
     A special class of distribution that provides RTMP streaming from a
     single S3 Origin.
     """
     def __init__(self, connection=None, origin='', enabled=False,
                  caller_reference='', cnames=None, comment='',
-                 trusted_signers=None, logging=None):
-        DistributionConfig.__init__(self, connection=connection,
-                                    origin=origin, enabled=enabled,
-                                    caller_reference=caller_reference,
-                                    cnames=cnames, comment=comment,
-                                    trusted_signers=trusted_signers,
-                                    logging=logging)
+                 trusted_signers=None, logging=None,
+                 price_class='PriceClass_All'):
+        """
+        :param origin: The DNSName for the S3 Bucket that this distribution
+                       is associated with.  ie: bucket.s3.amazonaws.com
+        :type origin: class:`boto.cloudfront.origin.S3Origin`
+        
+        :param enabled: Whether or not this distribution is enabled.
+        :type enabled: bool
+        
+        :param caller_reference: A unique number that ensures the
+                                 request can't be replayed.  If no
+                                 caller_reference is provided, boto
+                                 will generate a type 4 UUID for use
+                                 as the caller reference.
+        :type enabled: str
+        
+        :param cnames: A list of aliases that are accepted for this domain
+        :type cnames: list of str
+        
+        :param comment: Any comments you want to include about the
+                        distribution.
+        :type comment: str
+        
+        :param trusted_signers: Specifies any AWS accounts you want to
+                                permit to create signed URLs for private
+                                content. If you want the distribution to
+                                use signed URLs, this should contain a
+                                TrustedSigners object; if you want the
+                                distribution to use basic URLs, leave
+                                this None.
+        :type trusted_signers: :class`boto.cloudfront.signers.TrustedSigners`
+        
+        :param logging: Controls whether access logs are written for the
+                        distribution. If you want to turn on access logs,
+                        this should contain a LoggingInfo object; otherwise
+                        it should contain None.
+        :type logging: :class`boto.cloudfront.logging.LoggingInfo`
+        
+        :param price_class: Determines which edge locations to use to balance
+                            price vs. required performance.  Valid values are:
+                            'PriceClass_100' - US & EU
+                            'PriceClass_200' - US, EU, .jp, Hong Kong & Singapore
+                            'PriceClass_All' - All edge locations (highest price)
+        :type price_class: str
+        """
+        #DistributionConfig.__init__(self, connection=connection,
+        #                            origin=origin, enabled=enabled,
+        #                            caller_reference=caller_reference,
+        #                            cnames=cnames, comment=comment,
+        #                            trusted_signers=trusted_signers,
+        #                            logging=logging)
+        self.origin = origin
+        self.enabled = enabled
+        if caller_reference:
+            self.caller_reference = caller_reference
+        else:
+            self.caller_reference = str(uuid.uuid4())
+        self.cnames = []
+        if cnames:
+            self.cnames = cnames
+        self.logging = logging
+        self.price_class = price_class
+    
+    def startElement(self, name, attrs, connection):
+        if name == 'Logging':
+            self.logging = LoggingInfo()
+            return self.logging
+        if name == 'TrustedSigners':
+            self.trusted_signers = TrustedSigners()
+            return self.trusted_signers
+    
+    def endElement(self, name, value, connection):
+        if name == 'CallerReference':
+            self.caller_reference = value
+        elif name == 'CNAME':
+            self.cnames.append(value)
+        elif name == 'Comment':
+            self.comment = value
+        elif name == 'Enabled':
+            if value.lower() == 'true':
+                self.enabled = True
+            else:
+                self.enabled = False
+        elif name == 'PriceClass':
+            self.price_class = value
+        
     def to_xml(self):
         s = '<?xml version="1.0" encoding="UTF-8"?>\n'
-        s += '<StreamingDistributionConfig xmlns="http://cloudfront.amazonaws.com/doc/2010-07-15/">\n'
+        s += '<StreamingDistributionConfig xmlns="http://cloudfront.amazonaws.com/doc/2012-07-01/">\n'
+        s += '  <CallerReference>%s</CallerReference>\n' % self.caller_reference
         if self.origin:
             s += self.origin.to_xml()
-        s += '  <CallerReference>%s</CallerReference>\n' % self.caller_reference
+        s += '  <Aliases>\n'
+        s += '    <Quantity>%d</Quantity>\n' % len(self.cnames)
+        s += '    <Items>\n'
         for cname in self.cnames:
-            s += '  <CNAME>%s</CNAME>\n' % cname
-        if self.comment:
-            s += '  <Comment>%s</Comment>\n' % self.comment
+            s += '      <CNAME>%s</CNAME>' % cname
+        s += '    </Items>\n'
+        s += '  </Aliases>\n'
+        s += '  <Comment>%s</Comment>\n' % self.comment
+        s += '<Logging>\n'
+        if self.logging:
+            s += '  <Enabled>true</Enabled>\n'
+            s += '  <Bucket>%s</Bucket>\n' % self.logging.bucket
+            s += '  <Prefix>%s</Prefix>\n' % self.logging.prefix
+        else:
+            s += '  <Enabled>false</Enabled>\n'
+            s += '  <Bucket/>\n<Prefix/>\n'
+        s += '</Logging>\n'
+        s += '<TrustedSigners>\n'
+        if self.trusted_signers:
+            s += '  <Quantity>%d</Quantity>\n' % len(self.trusted_signers)
+            s += '  <Items>\n'
+            for signer in self.trusted_signers:
+                s += '  <AwsAccountNumber>%s</AwsAccountNumber>\n' % signer
+            s += '  </Items>\n'
+        else:
+            s += '  <Quantity>0</Quantity>\n'
+        s += '</TrustedSigners>\n'
         s += '  <Enabled>'
         if self.enabled:
             s += 'true'
         else:
             s += 'false'
         s += '</Enabled>\n'
-        if self.trusted_signers:
-            s += '<TrustedSigners>\n'
-            for signer in self.trusted_signers:
-                if signer == 'Self':
-                    s += '  <Self/>\n'
-                else:
-                    s += '  <AwsAccountNumber>%s</AwsAccountNumber>\n' % signer
-            s += '</TrustedSigners>\n'
-        if self.logging:
-            s += '<Logging>\n'
-            s += '  <Bucket>%s</Bucket>\n' % self.logging.bucket
-            s += '  <Prefix>%s</Prefix>\n' % self.logging.prefix
-            s += '</Logging>\n'
+        s += '<PriceClass>%s</PriceClass>\n' % self.price_class
         s += '</StreamingDistributionConfig>\n'
         return s
 

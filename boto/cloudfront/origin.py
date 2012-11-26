@@ -35,7 +35,10 @@ class S3Origin(object):
     """
     Origin information to associate with the distribution.
     If your distribution will use an Amazon S3 origin,
-    then you use the S3Origin element.  DEPRECATED
+    then you use the S3Origin element.
+    
+    Note: This is for use ONLY with Streaming Distributions. for Download
+    Distributions, providing this object will convert it to a CFOrigin object.
     """
 
     def __init__(self, dns_name=None, origin_access_identity=None):

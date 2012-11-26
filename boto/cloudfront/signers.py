@@ -54,7 +54,7 @@ class TrustedSigners(list):
 
     def endElement(self, name, value, connection):
         if name == 'Self':
-            self.append(name)
+            self.append(name.lower()) # This shouldn't ever happen
         elif name == 'AwsAccountNumber':
             self.append(value)
-
+    
